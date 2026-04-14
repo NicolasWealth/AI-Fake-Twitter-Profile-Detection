@@ -1,10 +1,9 @@
 /**
  * Data Contract
  * {
- *   url: string,
- *   title: string,
- *   forms: number,
- *   links: string[],
- *   userId: string
+ *   username: string,
+ *   followersCount: number,
+ *   followingCount: number,
+ *   postsCount: number
  * }
  */
