@@ -1,13 +1,36 @@
-function extractPageData() {
-  const getCount = (selector) => {
-    const text = document.querySelector(selector)?.innerText || "0"
-    return parseInt(text.replace(/[^0-9]/g, "")) || 0
-  }
+function getCount(selector) {
+  const text = document.querySelector(selector)?.innerText || "0"
+  return parseInt(text.replace(/[^0-9]/g, ""), 10) || 0
+}
+
+function extractProfileData() {
+  const username = window.location.pathname.split("/")[1] || ""
+
+  const followersCount = getCount('a[href$="/followers"]')
+  const followingCount = getCount('a[href$="/following"]')
+
+  const postsText = document.querySelector('a[href$="/with_replies"]')?.innerText || ""
+  const postsCount = parseInt(postsText.replace(/[^0-9]/g, ""), 10) || 0
 
   return {
-    username: window.location.pathname.replace("/", ""),
-    followersCount: getCount('a[href$="/followers"]'),
-    followingCount: getCount('a[href$="/following"]'),
-    postsCount: getCount('div[dir="auto"] > span:first-child')
+    username,
+    followersCount,
+    followingCount,
+    postsCount
   }
 }
+
+// RUN + SEND
+const data = extractProfileData()
+console.log("Extracted:", data)
+
+// send to background
+chrome.runtime.sendMessage(
+  {
+    type: "SCAN_PAGE",
+    payload: data
+  },
+  (response) => {
+    console.log("Scan result:", response)
+  }
+)
