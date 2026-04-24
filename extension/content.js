@@ -20,17 +20,17 @@ function extractProfileData() {
   }
 }
 
-// RUN + SEND
-const data = extractProfileData()
-console.log("Extracted:", data)
+setTimeout(() => {
+  const data = extractProfileData()
+  console.log("Extracted:", data)
 
-// send to background
-chrome.runtime.sendMessage(
-  {
-    type: "SCAN_PAGE",
-    payload: data
-  },
-  (response) => {
-    console.log("Scan result:", response)
-  }
-)
+  chrome.runtime.sendMessage(
+    {
+      type: "SCAN_PAGE",
+      payload: data
+    },
+    (response) => {
+      console.log("Scan result:", response)
+    }
+  )
+}, 3000)
