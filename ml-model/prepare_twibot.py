@@ -5,16 +5,16 @@ import pandas as pd
 labels = pd.read_csv("data/raw/label.csv")
 
 # Load user data
-with open("data/raw/list.json", "r") as f:
+with open("data/raw/user.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
-# Convert JSON to DataFrame
 users = []
 
-for user_id, user_data in data.items():
+# FIX: list format
+for user_data in data:
     user = {}
 
-    user["id"] = user_id
+    user["id"] = user_data.get("id", None)
     user["followers_count"] = user_data.get("followers_count", 0)
     user["following_count"] = user_data.get("friends_count", 0)
     user["statuses_count"] = user_data.get("statuses_count", 0)
@@ -27,6 +27,7 @@ for user_id, user_data in data.items():
     user["profile_image_url"] = user_data.get("profile_image_url", "")
 
     user["created_at"] = user_data.get("created_at", "")
+    user["username"] = user_data.get("screen_name", "")
 
     users.append(user)
 
