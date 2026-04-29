@@ -79,6 +79,7 @@ for name, model in models.items():
 # Save best model
 joblib.dump(best_model, "data/models/best_model.pkl")
 
+print(df.columns.tolist())
 print("\n==========================")
 print("Best Model:", best_name)
 print("Best Fake F1:", round(best_score, 4))
