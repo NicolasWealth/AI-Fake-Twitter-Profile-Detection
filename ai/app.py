@@ -9,7 +9,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Allow extension / frontend requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,19 +20,37 @@ app.add_middleware(
 # Load model
 model = joblib.load("data/models/best_model.pkl")
 
-# Input schema
+# Exact feature order the model was trained on
+MODEL_FEATURES = [
+    "followers_count",
+    "following_count",
+    "follower_following_ratio",
+    "account_age_days",
+    "statuses_count",
+    "posts_per_day",
+    "content_density",
+    "has_profile_image",
+    "verified",
+    "bio_length",
+    "username_randomness_score",
+    "username_length",
+]
+
+# Input schema — accepts all extension fields, extras like username are ignored by model
 class ScanInput(BaseModel):
-    followers_count: int
-    following_count: int
-    follower_following_ratio: float
-    account_age_days: int
-    statuses_count: int
-    posts_per_day: float
-    has_profile_image: int
-    verified: int
-    bio_length: int
+    followers_count:           int
+    following_count:           int
+    follower_following_ratio:  float
+    account_age_days:          int
+    statuses_count:            int
+    posts_per_day:             float
+    content_density:           float   # statuses_count / account_age_days
+    has_profile_image:         int
+    verified:                  int
+    bio_length:                int
     username_randomness_score: float
-    username_length: int
+    username_length:           int
+    username:                  str = ""  # passed through but not fed to model
 
 @app.get("/")
 def home():
@@ -41,7 +58,9 @@ def home():
 
 @app.post("/predict")
 def predict(data: ScanInput):
-    df = pd.DataFrame([data.dict()])
+    # Build DataFrame with ONLY the model features, in the trained column order
+    row = {k: getattr(data, k) for k in MODEL_FEATURES}
+    df = pd.DataFrame([row])
 
     prediction = model.predict(df)[0]
 

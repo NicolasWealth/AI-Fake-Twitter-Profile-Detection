@@ -42,6 +42,11 @@ df = df.rename(columns={
     "is_fake": "label"
 })
 
+# Compute content_density BEFORE filling NaN (uses already-renamed columns)
+df["content_density"] = (
+    df["statuses_count"] / df["account_age_days"].replace(0, 1)
+).fillna(0)
+
 # Fill missing values for numeric columns
 numeric_cols = [
     "followers_count",
@@ -50,6 +55,7 @@ numeric_cols = [
     "account_age_days",
     "statuses_count",
     "posts_per_day",
+    "content_density",
     "bio_length",
     "username_randomness_score",
     "username_length"
@@ -71,10 +77,26 @@ for col in binary_cols:
     df[col] = df[col].astype(int)
 
 print("Clean Shape:", df.shape)
-print(df.head())
 print(df.columns.tolist())
 
-# Save cleaned file
-df.to_csv(OUTPUT_FILE, index=False)
+# Enforce exact column order to match MODEL_FEATURES in app.py
+FINAL_COLS = [
+    "followers_count",
+    "following_count",
+    "follower_following_ratio",
+    "account_age_days",
+    "statuses_count",
+    "posts_per_day",
+    "content_density",
+    "has_profile_image",
+    "verified",
+    "bio_length",
+    "username_randomness_score",
+    "username_length",
+    "label",
+]
+df = df[FINAL_COLS]
 
+print("Final columns:", df.columns.tolist())
+df.to_csv(OUTPUT_FILE, index=False)
 print("Saved:", OUTPUT_FILE)
