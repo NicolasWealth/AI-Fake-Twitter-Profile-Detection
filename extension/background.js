@@ -18,28 +18,19 @@ async function handleScanRequest(payload, sendResponse) {
       body: JSON.stringify(payload)
     })
 
-    if (!res.ok) throw new Error("AI service failed")
+    if (!res.ok) {
+      const errorText = await res.text()
+      throw new Error(`AI service failed (${res.status}): ${errorText}`)
+    }
 
     const result = await res.json()
 
     // Log scan to Supabase
     const supabaseBody = {
-      username:                   payload.username || "",
-      followers_count:            payload.followers_count,
-      following_count:            payload.following_count,
-      follower_following_ratio:   payload.follower_following_ratio,
-      account_age_days:           payload.account_age_days,
-      statuses_count:             payload.statuses_count,
-      posts_per_day:              payload.posts_per_day,
-      content_density:            payload.content_density,
-      has_profile_image:          payload.has_profile_image,
-      verified:                   payload.verified,
-      bio_length:                 payload.bio_length,
-      username_randomness_score:  payload.username_randomness_score,
-      username_length:            payload.username_length,
-      prediction:                 result.prediction,
-      label:                      result.label,
-      fake_probability:           result.fake_probability || 0
+      ...payload,
+      prediction: result.prediction,
+      label: result.label,
+      fake_probability: result.fake_probability || 0
     }
 
     console.log("[FPD] Sending to Supabase:", supabaseBody)
