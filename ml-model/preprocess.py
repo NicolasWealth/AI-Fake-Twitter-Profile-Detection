@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import numpy as np
 
 # Paths
 # NOTE: despite the .csv extension, the file is actually an Excel workbook (.xlsx)
@@ -47,6 +48,21 @@ df["content_density"] = (
     df["statuses_count"] / df["account_age_days"].replace(0, 1)
 ).fillna(0)
 
+df["followers_following_ratio"] = df["followers_count"] / (df["following_count"] + 1)
+
+df["tweets_per_day"] = df["statuses_count"] / (df["account_age_days"] + 1)
+
+df["engagement_proxy"] = df["followers_count"] * df["tweets_per_day"]
+
+df["followers_log"] = np.log1p(df["followers_count"])
+df["following_log"] = np.log1p(df["following_count"])
+
+df["ratio_log"] = df["followers_log"] / (df["following_log"] + 1)
+
+df["activity_score"] = df["statuses_count"] / (df["account_age_days"] + 1)
+
+df["growth_signal"] = df["followers_count"] / (df["account_age_days"] + 1)
+
 # Fill missing values for numeric columns
 numeric_cols = [
     "followers_count",
@@ -56,10 +72,22 @@ numeric_cols = [
     "statuses_count",
     "posts_per_day",
     "content_density",
+
+    # NEW FEATURES
+    "tweets_per_day",
+    "engagement_proxy",
+    "followers_log",
+    "following_log",
+    "ratio_log",
+    "activity_score",
+    "growth_signal",
+
     "bio_length",
     "username_randomness_score",
     "username_length"
 ]
+
+df = df.replace([np.inf, -np.inf], 0)
 
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -88,11 +116,22 @@ FINAL_COLS = [
     "statuses_count",
     "posts_per_day",
     "content_density",
+
+    # NEW FEATURES (add these)
+    "tweets_per_day",
+    "engagement_proxy",
+    "followers_log",
+    "following_log",
+    "ratio_log",
+    "activity_score",
+    "growth_signal",
+
     "has_profile_image",
     "verified",
     "bio_length",
     "username_randomness_score",
     "username_length",
+
     "label",
 ]
 df = df[FINAL_COLS]
