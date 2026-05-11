@@ -15,6 +15,8 @@
       ],
       "js": [
         "shared/featureEngineering.js",
+        "shared/explain.js",
+        "shared/risk.js",
         "platforms/twitter.js",
         "content.js"
       ],

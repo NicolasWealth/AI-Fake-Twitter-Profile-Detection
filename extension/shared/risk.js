@@ -1,4 +1,4 @@
-export function getRiskLevel(probability) {
+function getRiskLevel(probability) {
 
     const score =
         probability * 100

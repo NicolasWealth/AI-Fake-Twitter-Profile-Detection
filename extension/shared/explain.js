@@ -1,4 +1,4 @@
-export function generateExplanation(payload, result) {
+function generateExplanation(payload, result) {
 
     const reasons = []
 

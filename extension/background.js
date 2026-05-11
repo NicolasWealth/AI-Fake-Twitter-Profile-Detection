@@ -91,7 +91,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 })
 
 async function handleScanRequest(payload) {
-  const res = await fetch("http://127.0.0.1:8000/predict", {
+  const res = await fetch("https://smart-fake-profile-detection.onrender.com/predict", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

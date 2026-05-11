@@ -1,10 +1,7 @@
 let lastObservedPath = ""
 let lastCompletedPath = ""
 let activeScanPath = ""
-import { generateExplanation }
-  from "./shared/explain.js"
-import { getRiskLevel }
-  from "./shared/risk.js"
+
 
 function removeBadge() {
   const old = document.getElementById("fake-profile-ai-badge")
