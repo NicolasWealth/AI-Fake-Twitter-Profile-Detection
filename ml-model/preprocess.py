@@ -10,6 +10,23 @@ OUTPUT_FILE = f"{OUTPUT_DIR}/clean_dataset.csv"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+FEATURE_BOUNDS = {
+    "followers_count": (0, 1000000000),
+    "following_count": (0, 1000000),
+    "follower_following_ratio": (0, 1000),
+    "posts_per_day": (0, 500),
+    "content_density": (0, 500),
+    "tweets_per_day": (0, 500),
+    "engagement_proxy": (0, 100000000),
+    "activity_score": (0, 500),
+    "growth_signal": (0, 1000000),
+}
+
+
+def clip_numeric(series, lower=0, upper=None):
+    numeric = pd.to_numeric(series, errors="coerce").fillna(0)
+    return numeric.clip(lower=lower, upper=upper)
+
 # Load dataset — must use read_excel because the file is an xlsx file
 df = pd.read_excel(INPUT_FILE)
 
@@ -43,25 +60,62 @@ df = df.rename(columns={
     "is_fake": "label"
 })
 
-# Compute content_density BEFORE filling NaN (uses already-renamed columns)
-df["content_density"] = (
-    df["statuses_count"] / df["account_age_days"].replace(0, 1)
-).fillna(0)
+df["followers_count"] = clip_numeric(
+    df["followers_count"],
+    *FEATURE_BOUNDS["followers_count"]
+)
+df["following_count"] = clip_numeric(
+    df["following_count"],
+    *FEATURE_BOUNDS["following_count"]
+)
+df["account_age_days"] = clip_numeric(df["account_age_days"], 0)
+df["statuses_count"] = clip_numeric(df["statuses_count"], 0)
+df["bio_length"] = clip_numeric(df["bio_length"], 0)
+df["username_randomness_score"] = clip_numeric(
+    df["username_randomness_score"],
+    0,
+    1
+)
+df["username_length"] = clip_numeric(df["username_length"], 0)
 
-df["followers_following_ratio"] = df["followers_count"] / (df["following_count"] + 1)
+df["follower_following_ratio"] = clip_numeric(
+    df["followers_count"] / (df["following_count"] + 1),
+    *FEATURE_BOUNDS["follower_following_ratio"]
+)
 
-df["tweets_per_day"] = df["statuses_count"] / (df["account_age_days"] + 1)
+df["posts_per_day"] = clip_numeric(
+    df["statuses_count"] / (df["account_age_days"] + 1),
+    *FEATURE_BOUNDS["posts_per_day"]
+)
 
-df["engagement_proxy"] = df["followers_count"] * df["tweets_per_day"]
+df["content_density"] = clip_numeric(
+    df["statuses_count"] / df["account_age_days"].replace(0, 1),
+    *FEATURE_BOUNDS["content_density"]
+)
+
+df["tweets_per_day"] = clip_numeric(
+    df["statuses_count"] / (df["account_age_days"] + 1),
+    *FEATURE_BOUNDS["tweets_per_day"]
+)
+
+df["engagement_proxy"] = clip_numeric(
+    df["followers_count"] * df["tweets_per_day"],
+    *FEATURE_BOUNDS["engagement_proxy"]
+)
 
 df["followers_log"] = np.log1p(df["followers_count"])
 df["following_log"] = np.log1p(df["following_count"])
-
 df["ratio_log"] = df["followers_log"] / (df["following_log"] + 1)
 
-df["activity_score"] = df["statuses_count"] / (df["account_age_days"] + 1)
+df["activity_score"] = clip_numeric(
+    df["statuses_count"] / (df["account_age_days"] + 1),
+    *FEATURE_BOUNDS["activity_score"]
+)
 
-df["growth_signal"] = df["followers_count"] / (df["account_age_days"] + 1)
+df["growth_signal"] = clip_numeric(
+    df["followers_count"] / (df["account_age_days"] + 1),
+    *FEATURE_BOUNDS["growth_signal"]
+)
 
 # Fill missing values for numeric columns
 numeric_cols = [
@@ -91,7 +145,7 @@ df = df.replace([np.inf, -np.inf], 0)
 
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce")
-    df[col] = df[col].fillna(df[col].median())
+    df[col] = df[col].fillna(0)
 
 # Binary columns
 binary_cols = [

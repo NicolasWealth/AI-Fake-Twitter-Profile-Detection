@@ -1,3 +1,10 @@
+function clamp(value, min, max) {
+  return Math.min(
+    Math.max(value, min),
+    max
+  )
+}
+
 const ML_FEATURE_FIELDS = [
   "followers_count",
   "following_count",
@@ -20,6 +27,18 @@ const ML_FEATURE_FIELDS = [
   "username_length"
 ]
 
+const FEATURE_BOUNDS = {
+  followers_count: [0, 1000000000],
+  following_count: [0, 1000000],
+  follower_following_ratio: [0, 1000],
+  posts_per_day: [0, 500],
+  content_density: [0, 500],
+  tweets_per_day: [0, 500],
+  engagement_proxy: [0, 100000000],
+  activity_score: [0, 500],
+  growth_signal: [0, 1000000]
+}
+
 function toFiniteNumber(value) {
   const number = Number(value)
   return Number.isFinite(number) ? number : 0
@@ -29,32 +48,79 @@ function roundFeature(value) {
   return Number.isFinite(value) ? +value.toFixed(4) : 0
 }
 
+function boundedFeature(value, field) {
+  const [min, max] = FEATURE_BOUNDS[field]
+  return clamp(value, min, max)
+}
+
 function buildMlPayload(rawProfile) {
   if (!rawProfile) return null
 
-  const followers = toFiniteNumber(rawProfile.followers_count)
-  const following = toFiniteNumber(rawProfile.following_count)
-  const accountAgeDays = toFiniteNumber(rawProfile.account_age_days)
-  const statuses = toFiniteNumber(rawProfile.statuses_count)
-  const hasProfileImage = toFiniteNumber(rawProfile.has_profile_image)
-  const verified = toFiniteNumber(rawProfile.verified)
-  const bioLength = toFiniteNumber(rawProfile.bio_length)
+  const followers = boundedFeature(
+    toFiniteNumber(rawProfile.followers_count),
+    "followers_count"
+  )
+  const following = boundedFeature(
+    toFiniteNumber(rawProfile.following_count),
+    "following_count"
+  )
+  const accountAgeDays = Math.max(0, toFiniteNumber(rawProfile.account_age_days))
+  const statuses = Math.max(0, toFiniteNumber(rawProfile.statuses_count))
+  const hasProfileImage = clamp(toFiniteNumber(rawProfile.has_profile_image), 0, 1)
+  const verified = clamp(toFiniteNumber(rawProfile.verified), 0, 1)
+  const bioLength = Math.max(0, toFiniteNumber(rawProfile.bio_length))
   const usernameRandomnessScore = toFiniteNumber(rawProfile.username_randomness_score)
-  const usernameLength = toFiniteNumber(rawProfile.username_length)
+  const usernameLength = Math.max(0, toFiniteNumber(rawProfile.username_length))
 
   const followerFollowingRatio =
-    following > 0 ? roundFeature(followers / following) : followers
-  const postsPerDay = roundFeature(statuses / (accountAgeDays + 1))
-  const contentDensity = roundFeature(statuses / Math.max(accountAgeDays, 1))
-  const tweetsPerDay = roundFeature(statuses / (accountAgeDays + 1))
-  const engagementProxy = roundFeature(followers * tweetsPerDay)
+    roundFeature(
+      boundedFeature(
+        followers / (following + 1),
+        "follower_following_ratio"
+      )
+    )
+  const postsPerDay = roundFeature(
+    boundedFeature(
+      statuses / (accountAgeDays + 1),
+      "posts_per_day"
+    )
+  )
+  const contentDensity = roundFeature(
+    boundedFeature(
+      statuses / Math.max(accountAgeDays, 1),
+      "content_density"
+    )
+  )
+  const tweetsPerDay = roundFeature(
+    boundedFeature(
+      statuses / (accountAgeDays + 1),
+      "tweets_per_day"
+    )
+  )
+  const engagementProxy = roundFeature(
+    boundedFeature(
+      followers * tweetsPerDay,
+      "engagement_proxy"
+    )
+  )
   const followersLog = roundFeature(Math.log1p(followers))
   const followingLog = roundFeature(Math.log1p(following))
   const ratioLog = roundFeature(followersLog / (followingLog + 1))
-  const activityScore = roundFeature(statuses / (accountAgeDays + 1))
-  const growthSignal = roundFeature(followers / (accountAgeDays + 1))
+  const activityScore = roundFeature(
+    boundedFeature(
+      statuses / (accountAgeDays + 1),
+      "activity_score"
+    )
+  )
+  const growthSignal = roundFeature(
+    boundedFeature(
+      followers / (accountAgeDays + 1),
+      "growth_signal"
+    )
+  )
 
   return {
+    platform: "twitter",
     username: rawProfile.username || "",
     followers_count: followers,
     following_count: following,

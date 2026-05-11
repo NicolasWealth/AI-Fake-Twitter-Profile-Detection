@@ -52,8 +52,30 @@ function calcRandomness(username) {
   return +(weird / username.length).toFixed(4)
 }
 
+function isProfileReady(username) {
+  if (!username) return false
+
+  const hasNameHeader = Boolean(document.querySelector('[data-testid="UserName"]'))
+  const hasFollowersLink = Boolean(
+    document.querySelector(
+      `a[href*="/${username}/followers"], a[href*="/followers"]`
+    )
+  )
+  const hasFollowingLink = Boolean(
+    document.querySelector(
+      `a[href*="/${username}/following"], a[href*="/following"]`
+    )
+  )
+
+  return hasNameHeader && hasFollowersLink && hasFollowingLink
+}
+
 function extractProfileData() {
   const username = window.location.pathname.split("/").filter(Boolean)[0] || ""
+
+  if (!isProfileReady(username)) {
+    return null
+  }
 
   const followers = getStat(
     "Followers",

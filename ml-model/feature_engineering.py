@@ -2,6 +2,18 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
 
+FEATURE_BOUNDS = {
+    "followers_count": (0, 1000000000),
+    "following_count": (0, 1000000),
+    "follower_following_ratio": (0, 1000),
+    "posts_per_day": (0, 500),
+}
+
+
+def clip_numeric(series, lower=0, upper=None):
+    numeric = pd.to_numeric(series, errors="coerce").fillna(0)
+    return numeric.clip(lower=lower, upper=upper)
+
 # Load raw merged data
 df = pd.read_csv("data/processed_raw.csv")
 
@@ -17,8 +29,21 @@ num_cols = [
 for col in num_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
+df["followers_count"] = clip_numeric(
+    df["followers_count"],
+    *FEATURE_BOUNDS["followers_count"]
+)
+df["following_count"] = clip_numeric(
+    df["following_count"],
+    *FEATURE_BOUNDS["following_count"]
+)
+df["statuses_count"] = clip_numeric(df["statuses_count"], 0)
+
 # follower_following_ratio
-df["follower_following_ratio"] = df["followers_count"] / (df["following_count"] + 1)
+df["follower_following_ratio"] = clip_numeric(
+    df["followers_count"] / (df["following_count"] + 1),
+    *FEATURE_BOUNDS["follower_following_ratio"]
+)
 
 # created_at -> account_age_days
 def calc_age(value):
@@ -34,7 +59,10 @@ def calc_age(value):
 df["account_age_days"] = df["created_at"].apply(calc_age)
 
 # posts_per_day
-df["posts_per_day"] = df["statuses_count"] / (df["account_age_days"] + 1)
+df["posts_per_day"] = clip_numeric(
+    df["statuses_count"] / (df["account_age_days"] + 1),
+    *FEATURE_BOUNDS["posts_per_day"]
+)
 
 # booleans
 df["has_profile_image"] = df["profile_image_url"].fillna("").astype(str).str.len().gt(0).astype(int)

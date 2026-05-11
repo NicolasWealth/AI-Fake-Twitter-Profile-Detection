@@ -1,4 +1,10 @@
-let lastPath = ""
+let lastObservedPath = ""
+let lastCompletedPath = ""
+let activeScanPath = ""
+import { generateExplanation }
+  from "./shared/explain.js"
+import { getRiskLevel }
+  from "./shared/risk.js"
 
 function removeBadge() {
   const old = document.getElementById("fake-profile-ai-badge")
@@ -19,22 +25,52 @@ function showBadge(text, color) {
   document.body.appendChild(badge)
 }
 
+function scheduleRetry(path, delayMs) {
+  setTimeout(() => {
+    if (window.location.pathname === path) {
+      scanProfile()
+    }
+  }, delayMs)
+}
+
 function scanProfile() {
   const path = window.location.pathname
-  if (path === lastPath) return
-  lastPath = path
+
+  if (path !== lastObservedPath) {
+    lastObservedPath = path
+    lastCompletedPath = ""
+    activeScanPath = ""
+  }
 
   const parts = path.split("/").filter(Boolean)
   if (parts.length !== 1) return
   if (typeof extractProfileData !== "function") return
   if (typeof buildMlPayload !== "function") return
+  if (path === lastCompletedPath || path === activeScanPath) return
+
+  activeScanPath = path
 
   setTimeout(function delayedScan() {
+    if (window.location.pathname !== path) {
+      activeScanPath = ""
+      return
+    }
+
     const rawProfile = extractProfileData()
+
+    if (!rawProfile) {
+      activeScanPath = ""
+      removeBadge()
+      scheduleRetry(path, 1000)
+      return
+    }
+
     const payload = buildMlPayload(rawProfile)
 
-    if (!rawProfile || !payload) {
+    if (!payload) {
+      activeScanPath = ""
       showBadge("Extraction Error", "#555")
+      scheduleRetry(path, 1500)
       return
     }
 
@@ -45,6 +81,8 @@ function scanProfile() {
     chrome.runtime.sendMessage({ type: "SCAN_PAGE", payload }, function onScanResponse(response) {
       console.log("[FPD] Response:", response)
 
+      activeScanPath = ""
+
       if (chrome.runtime.lastError) {
         console.error("[FPD] Runtime error:", chrome.runtime.lastError)
         showBadge("Extension Error", "#555")
@@ -52,15 +90,43 @@ function scanProfile() {
       }
 
       if (!response || !response.success) {
+        console.error("[FPD] Scan failed:", response?.error || "Unknown error")
         showBadge("API Error", "#555")
         return
       }
 
+      lastCompletedPath = path
+
       const data = response.data
+      const explanation =
+        generateExplanation(payload, data)
+
+      console.log(
+        "[FPD] Explanation:",
+        explanation
+      )
       const score = Math.round((data.fake_probability || 0) * 100)
+      const risk =
+        getRiskLevel(
+          data.fake_probability || 0
+        )
+
+      console.log(
+        "[FPD] Risk:",
+        risk
+      )
+
+      showBadge(
+        `${risk.level} Risk\n${score}% suspicious`,
+        risk.color
+      )
+      return
 
       if (data.label === "fake") {
-        showBadge(`Fake ${score}%`, "#d93025")
+        showBadge(
+          `🔴 Fake ${score}%\n${explanation.reasons[0] || ""}`,
+          "#d93025"
+        )
       } else {
         showBadge(`Real ${100 - score}%`, "#188038")
       }
@@ -68,6 +134,18 @@ function scanProfile() {
   }, 2500)
 }
 
-const observer = new MutationObserver(scanProfile)
-observer.observe(document.body, { childList: true, subtree: true })
+let scanTimeout = null
+
+const observer = new MutationObserver(() => {
+  clearTimeout(scanTimeout)
+
+  scanTimeout = setTimeout(() => {
+    scanProfile()
+  }, 1500)
+})
+
+observer.observe(document.body, {
+  childList: true,
+  subtree: true
+})
 scanProfile()
