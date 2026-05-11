@@ -1,5 +1,6 @@
 import joblib
 import math
+import os
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,7 +53,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-bundle = joblib.load("data/models/best_model.pkl")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "..", "data", "models", "best_model.pkl")
+bundle = joblib.load(MODEL_PATH)
 model = bundle["model"]
 threshold = float(bundle.get("threshold", 0.5))
 MODEL_FEATURES = bundle.get("features", DEFAULT_MODEL_FEATURES)
