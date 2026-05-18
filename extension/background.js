@@ -1,5 +1,6 @@
-const SUPABASE_URL = "https://zoxmchlwfxnudopusksr.supabase.co"
-const SUPABASE_KEY = "sb_publishable_QZ9pnITIaIclvMvaQup0lQ_90gx9OoK"
+import { CONFIG } from "./config.js"
+
+const { API_URL, SUPABASE_URL, SUPABASE_ANON_KEY: SUPABASE_KEY } = CONFIG
 const SUPABASE_MAX_SCHEMA_RETRIES = 12
 
 function getSupabaseHeaders() {
@@ -91,7 +92,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 })
 
 async function handleScanRequest(payload) {
-  const res = await fetch("https://smart-fake-profile-detection.onrender.com/predict", {
+  const res = await fetch(API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

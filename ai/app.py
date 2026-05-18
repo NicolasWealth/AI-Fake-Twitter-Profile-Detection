@@ -159,6 +159,62 @@ def build_feature_frame(data):
     )
 
 
+def build_risk_level(probability):
+    score = probability * 100
+
+    if score >= 85:
+        return "Critical"
+
+    if score >= 70:
+        return "High"
+
+    if score >= 50:
+        return "Medium"
+
+    return "Low"
+
+
+def build_explanation(row, probability):
+    reasons = []
+
+    if row["follower_following_ratio"] >= 1000:
+        reasons.append("Extremely high follower ratio")
+
+    if row["username_randomness_score"] > 0.4:
+        reasons.append("Username randomness detected")
+
+    if row["has_profile_image"] == 0:
+        reasons.append("Missing profile image")
+
+    if row["bio_length"] < 10:
+        reasons.append("Very short biography")
+
+    if row["content_density"] > 50:
+        reasons.append("Abnormal posting activity")
+
+    if row["tweets_per_day"] > 50 or row["activity_score"] > 50:
+        reasons.append("Very high daily posting volume")
+
+    if row["growth_signal"] < 0.5 and row["account_age_days"] > 180:
+        reasons.append("Weak follower growth for account age")
+
+    if row["engagement_proxy"] > 1000000 and row["verified"] == 0:
+        reasons.append("Large reach proxy without verification")
+
+    if row["ratio_log"] > 2.5 and row["following_count"] < 20:
+        reasons.append("Highly lopsided follower pattern")
+
+    if row["verified"] == 0 and row["followers_count"] > 1000000:
+        reasons.append("Large audience without verification")
+
+    if not reasons and probability >= 0.5:
+        reasons.append(
+            "Several account signals differ from typical real profiles"
+        )
+
+    return reasons
+
+
 class ScanInput(BaseModel):
     followers_count: int
     following_count: int
@@ -183,9 +239,11 @@ class ScanInput(BaseModel):
 
 
 @app.get("/")
-def home():
+def health():
     return {
-        "status": "running",
+        "status": "online",
+        "service": "Fake Profile Detection AI",
+        "model": MODEL_NAME,
         "model_name": MODEL_NAME,
         "feature_count": len(MODEL_FEATURES)
     }
@@ -193,9 +251,16 @@ def home():
 
 @app.post("/predict")
 def predict(data: ScanInput):
-    df = build_feature_frame(data)
+    feature_row = build_feature_row(data)
+    df = pd.DataFrame(
+        [[feature_row.get(feature, 0) for feature in MODEL_FEATURES]],
+        columns=MODEL_FEATURES
+    )
     proba = round(float(model.predict_proba(df)[0][1]), 4)
     prediction = int(proba >= threshold)
+    confidence = round(proba if prediction == 1 else 1 - proba, 4)
+    risk_level = build_risk_level(proba)
+    explanation = build_explanation(feature_row, proba)
 
     return {
         "prediction": prediction,
@@ -203,5 +268,9 @@ def predict(data: ScanInput):
         "fake_probability": proba,
         "probability": proba,
         "threshold": threshold,
-        "model_name": MODEL_NAME
+        "model_name": MODEL_NAME,
+        "confidence": confidence,
+        "risk_level": risk_level,
+        "explanation": explanation,
+        "features": feature_row
     }
