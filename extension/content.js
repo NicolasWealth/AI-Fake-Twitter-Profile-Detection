@@ -105,7 +105,8 @@ function scanProfile() {
       const score = Math.round((data.fake_probability || 0) * 100)
       const risk =
         getRiskLevel(
-          data.fake_probability || 0
+          data.fake_probability || 0,
+          data.confidence
         )
 
       console.log(

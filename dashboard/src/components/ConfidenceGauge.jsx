@@ -1,57 +1,68 @@
-function getProbability(scan) {
-  return Math.round((Number(scan?.fake_probability) || 0) * 100)
-}
+import { motion } from "framer-motion"
 
-function getRiskTone(probability) {
-  if (probability >= 85) {
-    return { label: "Critical", color: "#8b1e1e" }
-  }
-
-  if (probability >= 70) {
-    return { label: "High", color: "#b42318" }
-  }
-
-  if (probability >= 50) {
-    return { label: "Medium", color: "#f59e0b" }
-  }
-
-  return { label: "Low", color: "#0f766e" }
-}
+import {
+  cardStyle,
+  createBadgeStyle,
+  getConfidenceValue,
+  getProbabilityValue,
+  getRiskTone,
+  theme
+} from "../lib/dashboardTheme.js"
 
 export default function ConfidenceGauge({ scan }) {
-  const probability = getProbability(scan)
-  const tone = getRiskTone(probability)
+  const probability = getProbabilityValue(scan)
+  const confidence = getConfidenceValue(scan)
+  const tone = getRiskTone(probability, confidence)
   const fill = Math.min(Math.max(probability, 0), 100)
 
   return (
-    <section
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay: 0.05 }}
       style={{
-        background: "#ffffff",
-        border: "1px solid #d7deea",
-        borderRadius: 20,
-        padding: 20,
-        boxShadow: "0 12px 30px rgba(20, 33, 61, 0.08)"
+        ...cardStyle,
+        display: "grid",
+        gap: 18
       }}
     >
-      <h2 style={{ marginTop: 0, fontSize: 20 }}>Current confidence</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+        <h2 style={{ margin: 0, fontSize: 20, color: theme.text }}>Confidence envelope</h2>
+        <span style={createBadgeStyle(tone.color)}>{tone.label}</span>
+      </div>
       <div
         style={{
-          marginTop: 20,
           padding: 24,
           borderRadius: 18,
-          background: `linear-gradient(90deg, ${tone.color} ${fill}%, #e6ebf2 ${fill}%)`
+          background: `linear-gradient(90deg, ${tone.color} ${fill}%, rgba(255,255,255,0.05) ${fill}%)`,
+          border: `1px solid ${tone.color}33`
         }}
       >
-        <div style={{ fontSize: 40, fontWeight: 700, color: "#ffffff" }}>
+        <div style={{ fontSize: 42, fontWeight: 800, color: theme.text }}>
           {scan ? `${probability}%` : "--"}
         </div>
-        <div style={{ color: "#ffffff", opacity: 0.92 }}>
+        <div style={{ color: theme.text, opacity: 0.92 }}>
           {scan ? `${tone.label} risk for @${scan.username || "unknown"}` : "Select a scan"}
         </div>
       </div>
-      <p style={{ marginBottom: 0, color: "#4f5d75" }}>
-        Uses the saved fake probability from the latest selected scan.
-      </p>
-    </section>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
+        <div style={{ padding: 14, borderRadius: 16, background: "rgba(255,255,255,0.04)" }}>
+          <div style={{ color: theme.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Model Confidence
+          </div>
+          <div style={{ marginTop: 8, fontSize: 24, fontWeight: 700, color: theme.cyan }}>
+            {scan ? `${confidence}%` : "--"}
+          </div>
+        </div>
+        <div style={{ padding: 14, borderRadius: 16, background: "rgba(255,255,255,0.04)" }}>
+          <div style={{ color: theme.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Probability Band
+          </div>
+          <div style={{ marginTop: 8, fontSize: 24, fontWeight: 700, color: tone.color }}>
+            {scan ? `${Math.max(0, 100 - probability)}-${probability}` : "--"}
+          </div>
+        </div>
+      </div>
+    </motion.section>
   )
 }

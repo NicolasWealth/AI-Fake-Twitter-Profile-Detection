@@ -1,3 +1,4 @@
+import json
 import joblib
 import numpy as np
 import pandas as pd
@@ -9,14 +10,42 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix,
     f1_score,
+    precision_score,
+    recall_score,
     roc_auc_score,
+    roc_curve,
 )
 from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 MODEL_PATH = "data/models/best_model.pkl"
+METRICS_PATH = "ai/model_metrics.json"
+FEATURE_IMPORTANCE_PATH = "ai/feature_importance.json"
 THRESHOLD_CANDIDATES = np.arange(0.3, 0.7, 0.05)
+
+
+def extract_feature_importance(model, feature_names):
+    scores = None
+
+    if hasattr(model, "feature_importances_"):
+        scores = model.feature_importances_
+    elif hasattr(model, "named_steps"):
+        logistic_model = model.named_steps.get("logisticregression")
+        if logistic_model is not None and hasattr(logistic_model, "coef_"):
+            scores = np.abs(logistic_model.coef_[0])
+    elif hasattr(model, "coef_"):
+        scores = np.abs(model.coef_[0])
+
+    if scores is None:
+        return {}
+
+    pairs = [
+        (feature, round(float(score), 6))
+        for feature, score in zip(feature_names, scores)
+    ]
+    pairs.sort(key=lambda item: item[1], reverse=True)
+    return dict(pairs)
 
 # Load dataset
 df = pd.read_csv("data/processed/clean_dataset.csv")
@@ -64,6 +93,7 @@ best_name = None
 best_score = 0.0
 best_threshold = 0.5
 best_metrics = {}
+best_feature_importance = {}
 
 for name, model in models.items():
     print(f"\n===== {name} =====")
@@ -89,6 +119,8 @@ for name, model in models.items():
         preds = (probs >= selected_threshold).astype(int)
 
     acc = accuracy_score(y_test, preds)
+    precision = precision_score(y_test, preds, pos_label=1, zero_division=0)
+    recall = recall_score(y_test, preds, pos_label=1, zero_division=0)
     fake_f1 = f1_score(y_test, preds, pos_label=1)
     cv_scores = cross_val_score(
         model,
@@ -98,8 +130,12 @@ for name, model in models.items():
         scoring="f1"
     )
     roc_auc = roc_auc_score(y_test, probs)
+    fpr, tpr, _ = roc_curve(y_test, probs)
+    importance_data = extract_feature_importance(model, feature_names)
 
     print("Accuracy:", round(acc * 100, 2), "%")
+    print("Precision:", round(precision, 4))
+    print("Recall:", round(recall, 4))
     print("Fake Account F1:", round(fake_f1, 4))
     print("Cross Validation F1:", round(cv_scores.mean(), 4))
     print("ROC AUC:", round(roc_auc, 4))
@@ -115,10 +151,22 @@ for name, model in models.items():
         best_threshold = selected_threshold
         best_metrics = {
             "accuracy": round(acc, 4),
-            "fake_f1": round(fake_f1, 4),
+            "precision": round(float(precision), 4),
+            "recall": round(float(recall), 4),
+            "f1_score": round(fake_f1, 4),
             "cv_f1": round(float(cv_scores.mean()), 4),
             "roc_auc": round(float(roc_auc), 4),
+            "threshold": round(float(selected_threshold), 4),
+            "model_name": name,
+            "roc_curve": [
+                {
+                    "fpr": round(float(x), 6),
+                    "tpr": round(float(y), 6)
+                }
+                for x, y in zip(fpr, tpr)
+            ]
         }
+        best_feature_importance = importance_data
 
 joblib.dump(
     {
@@ -127,9 +175,16 @@ joblib.dump(
         "features": feature_names,
         "model_name": best_name,
         "metrics": best_metrics,
+        "feature_importance": best_feature_importance,
     },
     MODEL_PATH
 )
+
+with open(METRICS_PATH, "w", encoding="utf-8") as metrics_file:
+    json.dump(best_metrics, metrics_file, indent=2)
+
+with open(FEATURE_IMPORTANCE_PATH, "w", encoding="utf-8") as importance_file:
+    json.dump(best_feature_importance, importance_file, indent=2)
 
 print(feature_names)
 print("\n==========================")

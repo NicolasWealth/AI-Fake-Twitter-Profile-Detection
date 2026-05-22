@@ -1,19 +1,95 @@
-export default function StatCard({ label, value, accent, subtext }) {
+import { useEffect, useState } from "react"
+import { animate, motion, useMotionValue } from "framer-motion"
+
+import { cardStyle, theme } from "../lib/dashboardTheme.js"
+
+function formatValue(value, decimals, suffix) {
+  return `${Number(value).toFixed(decimals)}${suffix}`
+}
+
+function AnimatedValue({ value, decimals = 0, suffix = "" }) {
+  const numericValue = Number(value)
+  const motionValue = useMotionValue(0)
+  const [displayValue, setDisplayValue] = useState(
+    Number.isFinite(numericValue)
+      ? formatValue(0, decimals, suffix)
+      : value
+  )
+
+  useEffect(() => {
+    if (!Number.isFinite(numericValue)) {
+      setDisplayValue(value)
+      return undefined
+    }
+
+    const unsubscribe = motionValue.on("change", (latest) => {
+      setDisplayValue(formatValue(latest, decimals, suffix))
+    })
+    const controls = animate(motionValue, numericValue, {
+      duration: 0.9,
+      ease: "easeOut"
+    })
+
+    return () => {
+      unsubscribe()
+      controls.stop()
+    }
+  }, [decimals, motionValue, numericValue, suffix, value])
+
+  return <span>{displayValue}</span>
+}
+
+export default function StatCard({
+  label,
+  value,
+  accent,
+  subtext,
+  suffix = "",
+  decimals = 0,
+  icon: Icon
+}) {
   return (
-    <section
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45 }}
       style={{
-        background: "#ffffff",
-        border: `1px solid ${accent}22`,
-        borderRadius: 18,
-        padding: 18,
-        boxShadow: "0 12px 30px rgba(20, 33, 61, 0.08)"
+        ...cardStyle,
+        border: `1px solid ${accent}33`,
+        minHeight: 148
       }}
     >
-      <div style={{ color: "#4f5d75", fontSize: 14 }}>{label}</div>
-      <div style={{ marginTop: 10, fontSize: 32, fontWeight: 700, color: accent }}>
-        {value}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12
+        }}
+      >
+        <div
+          style={{
+            color: theme.muted,
+            fontSize: 13,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase"
+          }}
+        >
+          {label}
+        </div>
+        {Icon ? <Icon size={18} color={accent} /> : null}
       </div>
-      <div style={{ marginTop: 6, color: "#6b7280", fontSize: 13 }}>{subtext}</div>
-    </section>
+      <div
+        style={{
+          marginTop: 18,
+          fontSize: 34,
+          fontWeight: 800,
+          color: accent
+        }}
+      >
+        <AnimatedValue value={value} decimals={decimals} suffix={suffix} />
+      </div>
+      <div style={{ marginTop: 8, color: theme.subtle, fontSize: 13 }}>{subtext}</div>
+    </motion.section>
   )
 }

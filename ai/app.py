@@ -1,10 +1,13 @@
 import joblib
+import json
 import math
 import os
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from urllib import error, request
+import logging
 
 DEFAULT_MODEL_FEATURES = [
     "followers_count",
@@ -40,6 +43,9 @@ FEATURE_BOUNDS = {
     "growth_signal": (0, 1000000),
 }
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="Fake Profile Detection AI",
     version="1.0.0"
@@ -55,11 +61,19 @@ app.add_middleware(
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "..", "data", "models", "best_model.pkl")
+MODEL_METRICS_PATH = os.path.join(BASE_DIR, "model_metrics.json")
+FEATURE_IMPORTANCE_PATH = os.path.join(BASE_DIR, "feature_importance.json")
 bundle = joblib.load(MODEL_PATH)
 model = bundle["model"]
 threshold = float(bundle.get("threshold", 0.5))
 MODEL_FEATURES = bundle.get("features", DEFAULT_MODEL_FEATURES)
+MODEL_VERSION = "v2.1.0"
 MODEL_NAME = bundle.get("model_name", type(model).__name__)
+DEFAULT_MODEL_METRICS = bundle.get("metrics", {})
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_TABLE = os.getenv("SUPABASE_TABLE", "scans")
+SUPABASE_MAX_SCHEMA_RETRIES = 12
 
 
 def clamp(value, lower, upper):
@@ -85,6 +99,47 @@ def bounded_number(value, field):
 
 def round_feature(value):
     return round(value, 4) if math.isfinite(value) else 0.0
+
+
+def extract_feature_importance(model_instance, feature_names):
+    scores = None
+
+    if hasattr(model_instance, "feature_importances_"):
+        scores = model_instance.feature_importances_
+    elif hasattr(model_instance, "named_steps"):
+        logistic_model = model_instance.named_steps.get("logisticregression")
+        if logistic_model is not None and hasattr(logistic_model, "coef_"):
+            scores = [abs(score) for score in logistic_model.coef_[0]]
+    elif hasattr(model_instance, "coef_"):
+        scores = [abs(score) for score in model_instance.coef_[0]]
+
+    if scores is None:
+        return {}
+
+    pairs = [
+        (feature, round(float(abs(score)), 6))
+        for feature, score in zip(feature_names, scores)
+    ]
+    pairs.sort(key=lambda item: item[1], reverse=True)
+    return dict(pairs)
+
+
+DEFAULT_FEATURE_IMPORTANCE = (
+    bundle.get("feature_importance") or
+    extract_feature_importance(model, MODEL_FEATURES)
+)
+
+
+def load_json_file(path, fallback):
+    try:
+        with open(path, encoding="utf-8") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        logger.warning("JSON file not found: %s", path)
+    except json.JSONDecodeError:
+        logger.warning("Invalid JSON file: %s", path)
+
+    return fallback
 
 
 def build_feature_row(data):
@@ -215,6 +270,79 @@ def build_explanation(row, probability):
     return reasons
 
 
+def get_missing_schema_column(error_text):
+    try:
+        parsed = json.loads(error_text)
+        message = parsed.get("message", "")
+        marker = "Could not find the '"
+        if marker not in message:
+            return None
+
+        start = message.index(marker) + len(marker)
+        end = message.find("' column", start)
+        return message[start:end] if end > start else None
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+
+def insert_supabase_scan(row):
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY on server"
+        }
+
+    body = dict(row)
+    endpoint = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}"
+    headers = {
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
+    }
+
+    for _ in range(SUPABASE_MAX_SCHEMA_RETRIES + 1):
+        payload = json.dumps(body).encode("utf-8")
+        req = request.Request(endpoint, data=payload, headers=headers, method="POST")
+
+        try:
+            with request.urlopen(req) as response:
+                status = getattr(response, "status", 200)
+                if 200 <= status < 300:
+                    return {
+                        "ok": True,
+                        "saved_row": body
+                    }
+        except error.HTTPError as exc:
+            error_text = exc.read().decode("utf-8", errors="replace")
+            missing_column = get_missing_schema_column(error_text)
+
+            if (
+                exc.code == 400 and
+                missing_column and
+                missing_column in body
+            ):
+                del body[missing_column]
+                continue
+
+            return {
+                "ok": False,
+                "status": exc.code,
+                "error": error_text
+            }
+        except error.URLError as exc:
+            return {
+                "ok": False,
+                "error": str(exc.reason)
+            }
+
+    return {
+        "ok": False,
+        "error": "Supabase schema retry limit reached"
+    }
+
+
 class ScanInput(BaseModel):
     followers_count: int
     following_count: int
@@ -236,6 +364,9 @@ class ScanInput(BaseModel):
     activity_score: float = 0.0
     growth_signal: float = 0.0
     username: str = ""
+    platform: str = "twitter"
+    scan_id: str = ""
+    raw_metrics: dict[str, object] = Field(default_factory=dict)
 
 
 @app.get("/")
@@ -245,8 +376,18 @@ def health():
         "service": "Fake Profile Detection AI",
         "model": MODEL_NAME,
         "model_name": MODEL_NAME,
+        "model_version": MODEL_VERSION,
         "feature_count": len(MODEL_FEATURES)
     }
+
+@app.get("/metrics")
+def metrics():
+    return load_json_file(MODEL_METRICS_PATH, DEFAULT_MODEL_METRICS)
+
+
+@app.get("/feature-importance")
+def feature_importance():
+    return load_json_file(FEATURE_IMPORTANCE_PATH, DEFAULT_FEATURE_IMPORTANCE)
 
 
 @app.post("/predict")
@@ -261,6 +402,29 @@ def predict(data: ScanInput):
     confidence = round(proba if prediction == 1 else 1 - proba, 4)
     risk_level = build_risk_level(proba)
     explanation = build_explanation(feature_row, proba)
+    supabase_row = {
+        "platform": data.platform or "twitter",
+        "scan_id": data.scan_id or "",
+        "username": data.username or "",
+        "raw_metrics": data.raw_metrics,
+        **feature_row,
+        "prediction": prediction,
+        "label": "fake" if prediction == 1 else "real",
+        "fake_probability": proba,
+        "confidence": confidence,
+        "risk_level": risk_level,
+        "explanation": explanation
+    }
+    supabase_result = insert_supabase_scan(supabase_row)
+    logger.info(
+        "Prediction=%s Confidence=%.2f Risk=%s ScanId=%s User=%s Platform=%s",
+        prediction,
+        confidence,
+        risk_level,
+        data.scan_id or "-",
+        data.username or "-",
+        data.platform or "twitter"
+    )
 
     return {
         "prediction": prediction,
@@ -269,8 +433,10 @@ def predict(data: ScanInput):
         "probability": proba,
         "threshold": threshold,
         "model_name": MODEL_NAME,
+        "model_version": MODEL_VERSION,
         "confidence": confidence,
         "risk_level": risk_level,
         "explanation": explanation,
-        "features": feature_row
+        "features": feature_row,
+        "supabase": supabase_result
     }

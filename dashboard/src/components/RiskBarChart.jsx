@@ -1,8 +1,12 @@
+import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+
+import { cardStyle, theme } from "../lib/dashboardTheme.js"
+
 const BUCKETS = [
-  { label: "Low", min: 0, max: 50, color: "#0f766e" },
-  { label: "Medium", min: 50, max: 70, color: "#f59e0b" },
-  { label: "High", min: 70, max: 85, color: "#f97316" },
-  { label: "Critical", min: 85, max: 101, color: "#b42318" }
+  { label: "Low", min: 0, max: 50, color: theme.green },
+  { label: "Medium", min: 50, max: 70, color: theme.amber },
+  { label: "High", min: 70, max: 85, color: theme.orange },
+  { label: "Critical", min: 85, max: 101, color: theme.red }
 ]
 
 export default function RiskBarChart({ scans }) {
@@ -23,39 +27,43 @@ export default function RiskBarChart({ scans }) {
   return (
     <section
       style={{
-        background: "#ffffff",
-        border: "1px solid #d7deea",
-        borderRadius: 20,
-        padding: 20,
-        boxShadow: "0 12px 30px rgba(20, 33, 61, 0.08)"
+        ...cardStyle
       }}
     >
-      <h2 style={{ marginTop: 0, fontSize: 20 }}>Risk buckets</h2>
-      <div style={{ display: "grid", gap: 14, marginTop: 18 }}>
-        {counts.map((bucket) => (
-          <div key={bucket.label} style={{ display: "grid", gap: 6 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>{bucket.label}</span>
-              <strong>{bucket.total}</strong>
-            </div>
-            <div
-              style={{
-                height: 12,
-                borderRadius: 999,
-                overflow: "hidden",
-                background: "#e6ebf2"
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <h2 style={{ margin: 0, fontSize: 20, color: theme.text }}>Risk buckets</h2>
+        <span style={{ color: theme.muted, fontSize: 12 }}>Peak bucket: {peak}</span>
+      </div>
+      <div style={{ height: 220, marginTop: 18 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={counts}>
+            <XAxis
+              dataKey="label"
+              tick={{ fill: theme.muted, fontSize: 12 }}
+              axisLine={{ stroke: theme.grid }}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fill: theme.muted, fontSize: 12 }}
+              axisLine={false}
+              tickLine={false}
+              allowDecimals={false}
+            />
+            <Tooltip
+              contentStyle={{
+                background: theme.backgroundAlt,
+                border: `1px solid ${theme.borderStrong}`,
+                borderRadius: 12,
+                color: theme.text
               }}
-            >
-              <div
-                style={{
-                  width: `${(bucket.total / peak) * 100}%`,
-                  height: "100%",
-                  background: bucket.color
-                }}
-              />
-            </div>
-          </div>
-        ))}
+            />
+            <Bar dataKey="total" radius={[8, 8, 0, 0]}>
+              {counts.map((bucket) => (
+                <Cell key={bucket.label} fill={bucket.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </section>
   )

@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react"
+import { Activity, AlertTriangle, Shield, Waypoints } from "lucide-react"
+import { motion } from "framer-motion"
 
 import ConfidenceGauge from "../components/ConfidenceGauge.jsx"
 import ExplanationPanel from "../components/ExplanationPanel.jsx"
 import FakeVsRealChart from "../components/FakeVsRealChart.jsx"
+import FeatureImportanceChart from "../components/FeatureImportanceChart.jsx"
+import ModelMetrics from "../components/ModelMetrics.jsx"
 import PredictionPie from "../components/PredictionPie.jsx"
 import RecentScansTable from "../components/RecentScansTable.jsx"
 import RiskBarChart from "../components/RiskBarChart.jsx"
 import StatCard from "../components/StatCard.jsx"
+import ThreatFeed from "../components/ThreatFeed.jsx"
+import { fetchFeatureImportance, fetchModelMetrics } from "../lib/api.js"
+import { createBadgeStyle, getConfidenceValue, getProbabilityValue, theme } from "../lib/dashboardTheme.js"
 import { supabase } from "../lib/supabase"
 
 const MAX_SCANS = 100
@@ -40,15 +47,20 @@ function mergeScans(current, incoming) {
 export default function Dashboard() {
   const [scans, setScans] = useState([])
   const [selectedScanKey, setSelectedScanKey] = useState(null)
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(true)
+  const [scanError, setScanError] = useState("")
+  const [loadingScans, setLoadingScans] = useState(true)
+  const [metrics, setMetrics] = useState(null)
+  const [metricsError, setMetricsError] = useState("")
+  const [importance, setImportance] = useState(null)
+  const [importanceError, setImportanceError] = useState("")
+  const [loadingTelemetry, setLoadingTelemetry] = useState(true)
 
   useEffect(() => {
     if (!supabase) {
-      setError(
-        "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before loading scans."
+      setScanError(
+        "Supabase feed unavailable. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to stream live scans."
       )
-      setLoading(false)
+      setLoadingScans(false)
       return undefined
     }
 
@@ -66,15 +78,15 @@ export default function Dashboard() {
       }
 
       if (loadError) {
-        setError(loadError.message)
+        setScanError(loadError.message)
       } else {
         const nextScans = mergeScans([], data ?? [])
-        setError("")
+        setScanError("")
         setScans(nextScans)
         setSelectedScanKey((current) => current ?? getScanKey(nextScans[0]))
       }
 
-      setLoading(false)
+      setLoadingScans(false)
     }
 
     loadScans()
@@ -105,6 +117,46 @@ export default function Dashboard() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadTelemetry() {
+      try {
+        const [metricsPayload, importancePayload] = await Promise.all([
+          fetchModelMetrics(),
+          fetchFeatureImportance()
+        ])
+
+        if (cancelled) {
+          return
+        }
+
+        setMetrics(metricsPayload)
+        setMetricsError("")
+        setImportance(importancePayload)
+        setImportanceError("")
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+
+        const message = error instanceof Error ? error.message : String(error)
+        setMetricsError(message)
+        setImportanceError(message)
+      } finally {
+        if (!cancelled) {
+          setLoadingTelemetry(false)
+        }
+      }
+    }
+
+    loadTelemetry()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const selectedScan =
     scans.find((scan) => getScanKey(scan) === selectedScanKey) ?? scans[0] ?? null
 
@@ -119,92 +171,174 @@ export default function Dashboard() {
             0
           ) * 100 / scans.length
         )
+  const averageConfidence =
+    scans.length === 0
+      ? 0
+      : Math.round(
+          scans.reduce(
+            (sum, scan) => sum + getConfidenceValue(scan),
+            0
+          ) / scans.length
+        )
+  const highSeverityCount = scans.filter((scan) => getProbabilityValue(scan) >= 70).length
 
   return (
     <div
       style={{
-        padding: 24,
+        minHeight: "100svh",
+        padding: 32,
         display: "grid",
         gap: 24,
-        color: "#14213d"
+        color: theme.text,
+        background: `
+          radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 28%),
+          radial-gradient(circle at top right, rgba(251, 113, 133, 0.18), transparent 26%),
+          linear-gradient(180deg, ${theme.background} 0%, ${theme.backgroundAlt} 100%)
+        `
       }}
     >
-      <section>
-        <h1 style={{ margin: 0, fontSize: 32 }}>Fake Profile Detection Dashboard</h1>
-        <p style={{ marginTop: 8, color: "#4f5d75" }}>
-          Live scan activity, risk distribution, and the latest account signals.
-        </p>
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45 }}
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          borderRadius: 28,
+          border: `1px solid ${theme.borderStrong}`,
+          padding: 28,
+          background: "linear-gradient(135deg, rgba(5, 17, 28, 0.96), rgba(8, 26, 41, 0.92))",
+          boxShadow: "0 28px 80px rgba(1, 8, 15, 0.5)"
+        }}
+      >
+        <div style={{ display: "grid", gap: 20, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+          <div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+              <span style={createBadgeStyle(theme.red)}>Realtime pulse</span>
+              <span style={createBadgeStyle(theme.cyan)}>Threat intelligence</span>
+              <span style={createBadgeStyle(theme.blue)}>SOC dashboard</span>
+            </div>
+            <h1 style={{ margin: 0, fontSize: 36, color: theme.text }}>
+              Mini Threat Intelligence Command Center
+            </h1>
+            <p style={{ marginTop: 12, maxWidth: 720, color: theme.muted, lineHeight: 1.6 }}>
+              Live scan activity, model telemetry, feature importance, and suspicious profile spikes from the latest detection stream.
+            </p>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              alignContent: "start",
+              minWidth: 0
+            }}
+          >
+            <div style={{ ...createBadgeStyle(theme.amber), justifyContent: "space-between" }}>
+              <span>Average confidence</span>
+              <strong>{averageConfidence}%</strong>
+            </div>
+            <div style={{ ...createBadgeStyle(theme.red), justifyContent: "space-between" }}>
+              <span>High severity</span>
+              <strong>{highSeverityCount}</strong>
+            </div>
+          </div>
+        </div>
+      </motion.section>
+
+      <section
+        style={{
+          display: "grid",
+          gap: 16,
+          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))"
+        }}
+      >
+        <StatCard
+          label="Total scans"
+          value={scans.length}
+          accent={theme.cyan}
+          subtext="Latest 100 rows ingested"
+          icon={Activity}
+        />
+        <StatCard
+          label="Flagged fake"
+          value={fakeCount}
+          accent={theme.red}
+          subtext="Model label fake"
+          icon={AlertTriangle}
+        />
+        <StatCard
+          label="Flagged real"
+          value={realCount}
+          accent={theme.green}
+          subtext="Model label real"
+          icon={Shield}
+        />
+        <StatCard
+          label="Average risk"
+          value={averageRisk}
+          suffix="%"
+          accent={theme.amber}
+          subtext="Mean fake probability"
+          icon={Waypoints}
+        />
       </section>
 
-      {loading && <p>Loading scans...</p>}
+      {loadingScans && <p style={{ color: theme.muted }}>Loading scan feed...</p>}
+      {scanError && <p style={{ color: theme.amber }}>{scanError}</p>}
 
-      {!loading && error && <p style={{ color: "crimson" }}>{error}</p>}
+      <ThreatFeed
+        scans={scans}
+        selectedScanKey={selectedScan ? getScanKey(selectedScan) : null}
+        onSelect={setSelectedScanKey}
+      />
 
-      {!loading && !error && (
-        <>
-          <section
-            style={{
-              display: "grid",
-              gap: 16,
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
-            }}
-          >
-            <StatCard
-              label="Total scans"
-              value={scans.length}
-              accent="#14213d"
-              subtext="Latest 100 rows"
-            />
-            <StatCard
-              label="Flagged fake"
-              value={fakeCount}
-              accent="#b42318"
-              subtext="Model label fake"
-            />
-            <StatCard
-              label="Flagged real"
-              value={realCount}
-              accent="#0f766e"
-              subtext="Model label real"
-            />
-            <StatCard
-              label="Average risk"
-              value={`${averageRisk}%`}
-              accent="#f59e0b"
-              subtext="Mean fake probability"
-            />
-          </section>
+      <section
+        style={{
+          display: "grid",
+          gap: 16,
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))"
+        }}
+      >
+        <ModelMetrics
+          metrics={metrics}
+          loading={loadingTelemetry}
+          error={metricsError}
+        />
+        <FeatureImportanceChart
+          importance={importance}
+          loading={loadingTelemetry}
+          error={importanceError}
+        />
+      </section>
 
-          <section
-            style={{
-              display: "grid",
-              gap: 16,
-              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-              alignItems: "stretch"
-            }}
-          >
-            <PredictionPie scans={scans} />
-            <RiskBarChart scans={scans} />
-            <FakeVsRealChart scans={scans} />
-            <ConfidenceGauge scan={selectedScan} />
-          </section>
+      <section
+        style={{
+          display: "grid",
+          gap: 16,
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          alignItems: "stretch"
+        }}
+      >
+        <PredictionPie scans={scans} />
+        <RiskBarChart scans={scans} />
+        <FakeVsRealChart scans={scans} />
+        <ConfidenceGauge scan={selectedScan} />
+      </section>
 
-          <section
-            style={{
-              display: "grid",
-              gap: 16,
-              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))"
-            }}
-          >
-            <RecentScansTable
-              scans={scans}
-              selectedScanKey={selectedScan ? getScanKey(selectedScan) : null}
-              onSelect={setSelectedScanKey}
-            />
-            <ExplanationPanel scan={selectedScan} />
-          </section>
-        </>
-      )}
+      <section
+        style={{
+          display: "grid",
+          gap: 16,
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))"
+        }}
+      >
+        <RecentScansTable
+          scans={scans}
+          selectedScanKey={selectedScan ? getScanKey(selectedScan) : null}
+          onSelect={setSelectedScanKey}
+        />
+        <ExplanationPanel scan={selectedScan} />
+      </section>
     </div>
   )
 }

@@ -121,6 +121,7 @@ function extractProfileData() {
   }
 
   console.log("[FPD] Extracted raw:", {
+    platform: "twitter",
     username,
     followers,
     following,
@@ -132,16 +133,19 @@ function extractProfileData() {
   })
 
   return {
+    platform: "twitter",
     username,
-    followers_count: followers,
-    following_count: following,
-    account_age_days: accountAgeDays,
-    statuses_count: statuses,
-    has_profile_image: profileImage,
-    verified,
-    bio_length: bio.length,
-    username_randomness_score: calcRandomness(username),
-    username_length: username.length
+    rawMetrics: {
+      followers_count: followers,
+      following_count: following,
+      account_age_days: accountAgeDays,
+      statuses_count: statuses,
+      has_profile_image: profileImage,
+      verified,
+      bio_length: bio.length,
+      username_randomness_score: calcRandomness(username),
+      username_length: username.length
+    }
   }
 }
 

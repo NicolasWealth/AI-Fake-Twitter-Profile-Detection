@@ -1,7 +1,13 @@
-function getRiskLevel(probability) {
+function getRiskLevel(probability, confidence) {
 
     const score =
         probability * 100
+    const resolvedConfidence =
+        Number.isFinite(confidence)
+            ? confidence
+            : probability >= 0.5
+                ? probability
+                : 1 - probability
 
     if (score >= 85) {
         return {
@@ -21,6 +27,13 @@ function getRiskLevel(probability) {
         return {
             level: "Medium",
             color: "#f9ab00"
+        }
+    }
+
+    if (resolvedConfidence < 0.60) {
+        return {
+            level: "Uncertain",
+            color: "#2563eb"
         }
     }
 

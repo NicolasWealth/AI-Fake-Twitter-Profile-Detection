@@ -1,3 +1,12 @@
+import {
+  cardStyle,
+  createBadgeStyle,
+  getConfidenceValue,
+  getProbabilityValue,
+  getRiskTone,
+  theme
+} from "../lib/dashboardTheme.js"
+
 function getReasonList(scan) {
   if (!scan) {
     return []
@@ -47,31 +56,38 @@ function getReasonList(scan) {
 
 export default function ExplanationPanel({ scan }) {
   const reasons = getReasonList(scan)
+  const probability = getProbabilityValue(scan)
+  const confidence = getConfidenceValue(scan)
+  const tone = getRiskTone(probability, confidence)
 
   return (
     <section
       style={{
-        background: "#ffffff",
-        border: "1px solid #d7deea",
-        borderRadius: 20,
-        padding: 20,
-        boxShadow: "0 12px 30px rgba(20, 33, 61, 0.08)"
+        ...cardStyle
       }}
     >
-      <h2 style={{ marginTop: 0, fontSize: 20 }}>Selected scan</h2>
-      {!scan && <p style={{ color: "#4f5d75", marginBottom: 0 }}>No scan selected.</p>}
+      <h2 style={{ marginTop: 0, fontSize: 20, color: theme.text }}>Selected scan</h2>
+      {!scan && <p style={{ color: theme.muted, marginBottom: 0 }}>No scan selected.</p>}
       {scan && (
         <>
           <div
             style={{
               padding: 16,
               borderRadius: 16,
-              background: "#f7f9fc",
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${theme.border}`,
               marginBottom: 16
             }}
           >
-            <div style={{ fontSize: 22, fontWeight: 700 }}>@{scan.username || "unknown"}</div>
-            <div style={{ color: "#4f5d75", marginTop: 4 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: theme.text }}>@{scan.username || "unknown"}</div>
+            <div style={{ color: theme.muted, marginTop: 8, display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <span>{scan.platform || "twitter"}</span>
+              <span>{scan.label || "unknown"}</span>
+              <span>{probability}% suspicious</span>
+              <span>{confidence}% confidence</span>
+              <span style={createBadgeStyle(tone.color)}>{tone.label}</span>
+            </div>
+            <div style={{ display: "none" }}>
               {scan.platform || "twitter"} • {scan.label || "unknown"} •{" "}
               {Math.round((Number(scan.fake_probability) || 0) * 100)}% suspicious
             </div>
@@ -81,10 +97,11 @@ export default function ExplanationPanel({ scan }) {
               <div
                 key={reason}
                 style={{
-                  borderLeft: "4px solid #f59e0b",
+                  borderLeft: `4px solid ${tone.color}`,
                   padding: "10px 12px",
-                  background: "#fffaf0",
-                  borderRadius: 8
+                  background: "rgba(255,255,255,0.04)",
+                  borderRadius: 10,
+                  color: theme.text
                 }}
               >
                 {reason}

@@ -70,7 +70,13 @@ async function insertSupabaseScan(row) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== "SCAN_PAGE") return false
 
-  handleScanRequest(msg.payload)
+  const scanId = crypto.randomUUID()
+  const payloadWithScan = {
+    ...msg.payload,
+    scan_id: scanId
+  }
+
+  handleScanRequest(payloadWithScan)
     .then((data) => {
       sendResponse({
         success: true,
@@ -106,22 +112,38 @@ async function handleScanRequest(payload) {
   }
 
   const result = await res.json()
+  const serverSupabaseResult = result?.supabase
 
   const supabaseBody = {
     ...payload,
+    scan_id: payload.scan_id,
     prediction: result.prediction,
     label: result.label,
-    fake_probability: result.fake_probability || 0
+    fake_probability: result.fake_probability || 0,
+    confidence: result.confidence || 0,
+    risk_level: result.risk_level || "Low",
+    explanation: result.explanation || []
   }
 
-  console.log("[FPD] Sending to Supabase:", supabaseBody)
-
-  const supabaseResult = await insertSupabaseScan(supabaseBody)
-
-  if (!supabaseResult.ok) {
-    console.error("[FPD] Supabase error:", supabaseResult.status, supabaseResult.errorText)
+  if (serverSupabaseResult?.ok) {
+    console.log("[FPD] Supabase save OK on server for:", payload.username)
   } else {
-    console.log("[FPD] Supabase save OK for:", payload.username)
+    console.log("[FPD] Server did not save to Supabase, falling back to extension:", serverSupabaseResult)
+    console.log("[FPD] Sending to Supabase:", supabaseBody)
+
+    const supabaseResult = await insertSupabaseScan(supabaseBody)
+
+    if (!supabaseResult.ok) {
+      console.error("[FPD] Supabase error:", supabaseResult.status, supabaseResult.errorText)
+    } else {
+      console.log("[FPD] Supabase save OK for:", payload.username)
+    }
+  }
+
+  if (serverSupabaseResult?.skipped) {
+    console.warn("[FPD] Server-side Supabase insert skipped:", serverSupabaseResult.reason)
+  } else {
+    console.log("[FPD] Server-side Supabase result:", serverSupabaseResult)
   }
 
   return result

@@ -53,24 +53,53 @@ function boundedFeature(value, field) {
   return clamp(value, min, max)
 }
 
+function normalizeExtractorOutput(rawProfile) {
+  if (!rawProfile) {
+    return null
+  }
+
+  if (rawProfile.rawMetrics && typeof rawProfile.rawMetrics === "object") {
+    return {
+      platform: rawProfile.platform || "twitter",
+      username: rawProfile.username || "",
+      ...rawProfile.rawMetrics
+    }
+  }
+
+  return rawProfile
+}
+
 function buildMlPayload(rawProfile) {
-  if (!rawProfile) return null
+  const normalizedProfile = normalizeExtractorOutput(rawProfile)
+  if (!normalizedProfile) return null
+
+  const rawMetrics = {
+    followers_count: toFiniteNumber(normalizedProfile.followers_count),
+    following_count: toFiniteNumber(normalizedProfile.following_count),
+    account_age_days: toFiniteNumber(normalizedProfile.account_age_days),
+    statuses_count: toFiniteNumber(normalizedProfile.statuses_count),
+    has_profile_image: toFiniteNumber(normalizedProfile.has_profile_image),
+    verified: toFiniteNumber(normalizedProfile.verified),
+    bio_length: toFiniteNumber(normalizedProfile.bio_length),
+    username_randomness_score: toFiniteNumber(normalizedProfile.username_randomness_score),
+    username_length: toFiniteNumber(normalizedProfile.username_length)
+  }
 
   const followers = boundedFeature(
-    toFiniteNumber(rawProfile.followers_count),
+    rawMetrics.followers_count,
     "followers_count"
   )
   const following = boundedFeature(
-    toFiniteNumber(rawProfile.following_count),
+    rawMetrics.following_count,
     "following_count"
   )
-  const accountAgeDays = Math.max(0, toFiniteNumber(rawProfile.account_age_days))
-  const statuses = Math.max(0, toFiniteNumber(rawProfile.statuses_count))
-  const hasProfileImage = clamp(toFiniteNumber(rawProfile.has_profile_image), 0, 1)
-  const verified = clamp(toFiniteNumber(rawProfile.verified), 0, 1)
-  const bioLength = Math.max(0, toFiniteNumber(rawProfile.bio_length))
-  const usernameRandomnessScore = toFiniteNumber(rawProfile.username_randomness_score)
-  const usernameLength = Math.max(0, toFiniteNumber(rawProfile.username_length))
+  const accountAgeDays = Math.max(0, rawMetrics.account_age_days)
+  const statuses = Math.max(0, rawMetrics.statuses_count)
+  const hasProfileImage = clamp(rawMetrics.has_profile_image, 0, 1)
+  const verified = clamp(rawMetrics.verified, 0, 1)
+  const bioLength = Math.max(0, rawMetrics.bio_length)
+  const usernameRandomnessScore = rawMetrics.username_randomness_score
+  const usernameLength = Math.max(0, rawMetrics.username_length)
 
   const followerFollowingRatio =
     roundFeature(
@@ -120,8 +149,9 @@ function buildMlPayload(rawProfile) {
   )
 
   return {
-    platform: "twitter",
-    username: rawProfile.username || "",
+    platform: normalizedProfile.platform || "twitter",
+    username: normalizedProfile.username || "",
+    raw_metrics: rawMetrics,
     followers_count: followers,
     following_count: following,
     follower_following_ratio: followerFollowingRatio,
@@ -146,5 +176,6 @@ function buildMlPayload(rawProfile) {
 
 if (typeof globalThis !== "undefined") {
   globalThis.ML_FEATURE_FIELDS = ML_FEATURE_FIELDS
+  globalThis.normalizeExtractorOutput = normalizeExtractorOutput
   globalThis.buildMlPayload = buildMlPayload
 }
